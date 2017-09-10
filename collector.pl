@@ -9,11 +9,12 @@ use Getopt::Long;
 use lib '../SQL-Utils/lib/';
 use SQL::Utils;
 
-my ($help, $verbose, $dbfile);
+my ($help, $verbose, $dbfile, $agents);
 GetOptions(
 	'h|help'		=>	\$help,
 	'v|verbose+'	=>	\$verbose,
 	'd|dbfile=s'	=>	\$dbfile,
+	'a|agents=s'	=>	\$agents,
 );
 
 my %create_tables_sql = (
@@ -25,6 +26,7 @@ my %create_tables_sql = (
 );
 
 if ((!defined($dbfile)) or ($dbfile eq '')) { die "Need a database file!"; }
+if ((!defined($agents)) or ($agents eq '')) { print "No agents file specified.  Using local host.\n"; }
 
 # sqlite3 only does dates as epoch integers or strings,
 my $epoch_now = time();
@@ -42,6 +44,7 @@ my $blob = &get_data();
 
 &process_dat($blob);
 
+############
 ### Subs ###
 sub get_data {
 	local $/ = undef;
