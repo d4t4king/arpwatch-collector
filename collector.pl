@@ -5,8 +5,9 @@ use warnings;
 
 use Data::Dumper;
 use Getopt::Long;
+use Net::SSH::Perl;
 
-use lib '../SQL-Utils/lib/';
+use lib 'SQL-Utils/lib/';
 use SQL::Utils;
 
 my ($help, $verbose, $dbfile, $agents);
@@ -40,12 +41,35 @@ foreach my $t ( keys %create_tables_sql ) {
 	$sqlutils->execute_non_query($create_tables_sql{$t});
 }
 
-my $blob = &get_data();
-
-&process_dat($blob);
+if ($agents) {
+	open AGT, "<$agents" or die "There was a problem reading the agents file: $!";
+	while (my $agnt = <AGT>) {
+		chomp($agnt);
+		my @files = &get_files($agnt);
+		my $ssh = Net::SSH::Perl->new($agnt);
+		$ssh->login('root');
+		foreach my $f ( sort @files ) {
+			my ($stdout, $stderr, $exit) = $ssh->cmd('cat /var/lib/arpwatch/$f');
+			#print "|$stdout|";
+			if ((!defined($stdout)) or ($stdout eq '')) {
+				print "No data in file ($f) from $agnt.\n";
+			} else {
+				my $rtv = &process_dat($stdout);
+				print "$agnt: process_dat RTV: $rtv\n";
+			}
+		}
+	}
+	close AGT or die "There was a problem closing the agents file: $!";
+} else {
+	my $blob = &get_data();
+	&process_dat($blob);
+}
 
 ############
 ### Subs ###
+# Summary: Gets the data in the local arpwatch dat file
+# Param Name: None
+# Returns: the contents of the dat file in string form.
 sub get_data {
 	local $/ = undef;
 	open IN, "</var/lib/arpwatch/arp.dat" or die "Couldn't open arpwatch data file: $!";
@@ -54,6 +78,24 @@ sub get_data {
 	return $blob;
 }
 
+# Summary: gets the list of files from an agent
+# Param Name: host => The host to grab the list of files from
+# Returns: A list of arpwatch dat files from the remote host
+sub get_files {
+	my $host = shift;
+	my %sshparams = ( 'port' => '22', 'protocol' => 2 );
+	my $ssh = Net::SSH::Perl->new($host);
+	$ssh->login('root');
+	my ($stdout, $stderr, $exit) = $ssh->cmd('ls /var/lib/arpwatch/');
+	$stdout =~ s/\r?\n/ /g;
+	my @list = split(/ /, $stdout);
+	my @files = grep(!/dat\-$/, @list);
+	return @files;
+}
+
+# Summary: populates the sqlite tables with arp data from files
+# Param Name: blob => dat file contents as string
+# Returns: None (Void)
 sub process_dat {
 	my $blob = shift;
 	my @lines = split(/\r?\n/, $blob);
