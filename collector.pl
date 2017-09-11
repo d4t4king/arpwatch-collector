@@ -50,7 +50,7 @@ if ($agents) {
 		my $ssh = Net::SSH::Perl->new($agnt, %sshparams);
 		$ssh->login('root');
 		foreach my $f ( sort @files ) {
-			my ($stdout, $stderr, $exit) = $ssh->cmd('cat /var/lib/arpwatch/$f');
+			my ($stdout, $stderr, $exit) = $ssh->cmd("cat /var/lib/arpwatch/$f");
 			#print "|$stdout|";
 			if ((!defined($stdout)) or ($stdout eq '')) {
 				print "No data in file ($f) from $agnt.\n";
@@ -123,7 +123,7 @@ sub process_dat {
 		my $ipaddr_id = $sqlutils->execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='$ip';");
 		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='$mac_id' AND ipaddr_id='$ipaddr_id';");
 		if ($record_id) {
-			$rtv = $sqlutils->execute_non_query("UPDATE hosts SET last_discovered='$epoch_now' WHERE mac_id='$mac_id' AND ipaddr_id='$ipaddr_id';");
+			$rtv = $sqlutils->execute_non_query("UPDATE hosts SET last_updated='$epoch_now' WHERE mac_id='$mac_id' AND ipaddr_id='$ipaddr_id';");
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('$mac_id','$ipaddr_id','$epoch_now','$epoch_now');");
 		}
