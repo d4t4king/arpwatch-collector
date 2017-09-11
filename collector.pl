@@ -45,6 +45,15 @@ if ($agents) {
 	open AGT, "<$agents" or die "There was a problem reading the agents file: $!";
 	while (my $agnt = <AGT>) {
 		chomp($agnt);
+		next if ($agnt =~ /^#/);		# skip commented lines
+		my $rtv = -1;
+		my $agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
+		if ($agent_id) {
+			$rtv = $sqlutils->execute_non_query("UPDATE agents SET last_update='$epoch_now' WHERE id='$agent_id';");
+		} else {
+			$rtv = $sqlutils->execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update,iface) VALUES ('','','$epoch_now','$epoch_now';");
+			$agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
+		}
 		my @files = &get_files($agnt);
 		my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
 		my $ssh = Net::SSH::Perl->new($agnt, %sshparams);
