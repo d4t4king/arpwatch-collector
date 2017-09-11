@@ -46,7 +46,8 @@ if ($agents) {
 	while (my $agnt = <AGT>) {
 		chomp($agnt);
 		my @files = &get_files($agnt);
-		my $ssh = Net::SSH::Perl->new($agnt);
+		my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
+		my $ssh = Net::SSH::Perl->new($agnt, %sshparams);
 		$ssh->login('root');
 		foreach my $f ( sort @files ) {
 			my ($stdout, $stderr, $exit) = $ssh->cmd('cat /var/lib/arpwatch/$f');
@@ -83,8 +84,8 @@ sub get_data {
 # Returns: A list of arpwatch dat files from the remote host
 sub get_files {
 	my $host = shift;
-	my %sshparams = ( 'port' => '22', 'protocol' => 2 );
-	my $ssh = Net::SSH::Perl->new($host);
+	my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
+	my $ssh = Net::SSH::Perl->new($host, %sshparams);
 	$ssh->login('root');
 	my ($stdout, $stderr, $exit) = $ssh->cmd('ls /var/lib/arpwatch/');
 	$stdout =~ s/\r?\n/ /g;
