@@ -73,10 +73,17 @@ if ($agents) {
 		}
 		my @files = &get_files($agnt);
 		my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
-		my $ssh = Net::SSH::Perl->new($agnt, %sshparams);
-		$ssh->login('root');
+		my $ssh;
+		eval{ $ssh  = Net::SSH::Perl->new($agnt, %sshparams); };
+		if ($@) {
+			die "There was a problem to connecing to agent $agnt: $@";
+		}
+		eval{ $ssh->login('root'); };
+		if ($@) { die "There was a problem logging into agent $agnt: $@"; }
 		foreach my $f ( sort @files ) {
-			my ($stdout, $stderr, $exit) = $ssh->cmd("cat /var/lib/arpwatch/$f");
+			my ($stdout, $stderr, $exit);
+			eval{ ($stdout, $stderr, $exit) = $ssh->cmd("cat /var/lib/arpwatch/$f"); };
+			if ($@) { die "There was a problem with the command to agent $agnt: $@"; }
 			#print "|$stdout|";
 			if ((!defined($stdout)) or ($stdout eq '')) {
 				print "No data in file ($f) from $agnt.\n";
@@ -111,7 +118,11 @@ sub get_data {
 sub get_files {
 	my $host = shift;
 	my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
-	my $ssh = Net::SSH::Perl->new($host, %sshparams);
+	my $ssh;
+	eval { $ssh = Net::SSH::Perl->new($host, %sshparams); };
+	if ($@) {
+		die "There was an error connecting to $host: $@";
+	}
 	$ssh->login('root');
 	my ($stdout, $stderr, $exit) = $ssh->cmd('ls /var/lib/arpwatch/');
 	$stdout =~ s/\r?\n/ /g;
