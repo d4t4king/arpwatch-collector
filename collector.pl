@@ -6,6 +6,7 @@ use warnings;
 use Data::Dumper;
 use Getopt::Long;
 use Net::SSH::Perl;
+use Net::Nslookup;
 
 use lib 'SQL-Utils/lib/';
 use SQL::Utils;
@@ -47,11 +48,27 @@ if ($agents) {
 		chomp($agnt);
 		next if ($agnt =~ /^#/);		# skip commented lines
 		my $rtv = -1;
-		my $agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
+		my $agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt'");
 		if ($agent_id) {
-			$rtv = $sqlutils->execute_non_query("UPDATE agents SET last_update='$epoch_now' WHERE id='$agent_id';");
+			$rtv = $sqlutils->execute_non_query("UPDATE agents SET last_update='$epoch_now' WHERE id='$agent_id'");
 		} else {
-			$rtv = $sqlutils->execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update,iface) VALUES ('','','$epoch_now','$epoch_now';");
+			if ($agnt =~ /^(?:\d+\.){3}(\d+)$/) {		# looks like IP address
+				my $a = nslookup('host' => $agnt, 'type' => 'A');
+				if ((defined($a)) and ($a ne '')) {
+					$rtv = $sqlutils->execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('$agnt','$a','$epoch_now','$epoch_now');");
+				} else {
+					$rtv = $sqlutils->execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('$agnt','$epoch_now','$epoch_now');");
+				}
+				print "AGT ip RTV: $rtv\n";
+			} else {
+				my $ptr = nslookup('host' => $agnt, 'type' => 'PTR');
+				if ((defined($ptr)) and ($ptr ne '')) {
+					$rtv = $sqlutils->execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('$ptr','$agnt','$epoch_now','$epoch_now');");
+				} else {
+					$rtv = $sqlutils->execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('$agnt','$epoch_now','$epoch_now');");
+				}
+				print "AGT agnt RTV: $rtv\n";
+			}
 			$agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
 		}
 		my @files = &get_files($agnt);
