@@ -37,12 +37,18 @@ print "Epoch now: $epoch_now \n" if ($verbose);
 # create the sql-utils object
 my $sqlutils = SQL::Utils->new('sqlite3', { 'db_filename' => $dbfile });
 
+# sel autofluch to true
+local $| = 1;
+
 # create the tables
+print "Creating tables if they don't exist in the target database....";
 foreach my $t ( keys %create_tables_sql ) {
 	$sqlutils->execute_non_query($create_tables_sql{$t});
 }
+print "done.\n";
 
 if ($agents) {
+	print "Processing agents file....\n";
 	open AGT, "<$agents" or die "There was a problem reading the agents file: $!";
 	while (my $agnt = <AGT>) {
 		chomp($agnt);
@@ -50,6 +56,7 @@ if ($agents) {
 		my $rtv = -1;
 		my $agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt'");
 		if ($agent_id) {
+			print "Got aganet ID: $agent_id\n";
 			$rtv = $sqlutils->execute_non_query("UPDATE agents SET last_update='$epoch_now' WHERE id='$agent_id'");
 		} else {
 			if ($agnt =~ /^(?:\d+\.){3}(\d+)$/) {		# looks like IP address
