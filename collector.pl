@@ -59,7 +59,7 @@ if ($agents) {
 		my $rtv = -1;
 		my $agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt'");
 		if ($agent_id) {
-			print "Got aganet ID: $agent_id\n";
+			print "Got agent ID: $agent_id\n";
 			$rtv = $sqlutils->execute_non_query("UPDATE agents SET last_update='$epoch_now' WHERE id='$agent_id'");
 		} else {
 			if ($agnt =~ /^(?:\d+\.){3}(\d+)$/) {		# looks like IP address
@@ -82,21 +82,14 @@ if ($agents) {
 			$agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
 		}
 		my @files = &get_files($agnt);
-		#my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
-		#my $ssh  = Net::SSH::Perl->new($agnt, %sshparams) or die "There was a problem to connecing to agent $agnt: $!";
-		#$ssh->login('root') or die "There was a problem logging into agent $agnt: $!";
 		foreach my $f ( sort @files ) {
-			#my ($stdout, $stderr, $exit) = $ssh->cmd("cat /var/lib/arpwatch/$f") or die "There was a problem with the command to agent $agnt: $@";
-			#print "|$stdout|";
-			#if ((!defined($stdout)) or ($stdout eq '')) {
-			#	print "No data in file ($f) from $agnt.\n";
-			#} else {
-			#	my $rtv = &process_dat($stdout);
-			#	print "$agnt: process_dat RTV: $rtv\n";
-			#}
 			my $blob = `$sshbin $agnt 'cat /var/lib/arpwatch/$f'`;
-			my $rtv = &process_dat($blob);
-			print "$agnt: process_dat RTV: $rtv\n";
+			if ((!defined($blob)) or ($blob eq '')) {
+				print "Got no data from $agnt:/var/lib/arpwatch/$f\n";
+			} else {
+				my $rtv  = &process_dat($blob, $agent_id);
+				print "$agnt: process_dat RTV: $rtv\n";
+			}
 		}
 	}
 	close AGT or die "There was a problem closing the agents file: $!";
@@ -123,14 +116,13 @@ sub get_data {
 # Returns: A list of arpwatch dat files from the remote host
 sub get_files {
 	my $host = shift;
-	my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
-	my $ssh;
-	$ssh = Net::SSH::Perl->new($host, %sshparams) or die "There was an error connecting to $host: $!";
-	$ssh->login('root') or die "Couldn't login tp $host: $!";
-	my ($stdout, $stderr, $exit) = $ssh->cmd('ls /var/lib/arpwatch/') or die "There was a problem running ls on $host: $!";
-	$stdout =~ s/\r?\n/ /g;
-	my @list = split(/ /, $stdout);
-	my @files = grep(!/dat\-$/, @list);
+	my $blob = `$sshbin $host 'ls /var/lib/arpwatch'`;
+	chomp($blob);
+	$blob =~ s/\r?\n/ /g;
+	my @list = split(/ /, $blob);
+	@list = grep(!/ethercodes\./, @list);
+	@list = grep(!/\.new$/, @list);
+	my @files = grep(!/\-$/, @list);
 	return @files;
 }
 
@@ -139,6 +131,7 @@ sub get_files {
 # Returns: None (Void)
 sub process_dat {
 	my $blob = shift;
+	my $agent_id = shift;
 	my @lines = split(/\r?\n/, $blob);
 	my $sql = '';
 	foreach my $l ( @lines ) {
@@ -151,22 +144,33 @@ sub process_dat {
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO macs (mac_addr, date_discovered, last_updated) VALUES ('$mac', '$epoch_now', '$epoch_now');");
 		}
-		print "MACS RTV: $rtv\n";
+		if (($verbose) and ($verbose > 1)) { print "MACS RTV: $rtv\n"; }
 		my $mac_id = $sqlutils->execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='$mac'");
+		$record_id = -1;
 		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='$ip';");
 		if ($record_id) {
 			$rtv = $sqlutils->execute_non_query("UPDATE ipaddrs SET last_updated='$epoch_now' WHERE ipaddr='$ip';");
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO ipaddrs (mac_id, ipaddr, date_discovered, last_updated) VALUES ('$mac_id','$ip','$epoch_now','$epoch_now');");
 		}
-		print "IPADDRS RTV: $rtv\n";
+		if (($verbose) and ($verbose > 1)) { print "IPADDRS RTV: $rtv\n"; }
 		my $ipaddr_id = $sqlutils->execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='$ip';");
+		$record_id = -1;
 		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='$mac_id' AND ipaddr_id='$ipaddr_id';");
 		if ($record_id) {
 			$rtv = $sqlutils->execute_non_query("UPDATE hosts SET last_updated='$epoch_now' WHERE mac_id='$mac_id' AND ipaddr_id='$ipaddr_id';");
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('$mac_id','$ipaddr_id','$epoch_now','$epoch_now');");
 		}
-		print "HOSTS RTV: $rtv\n";
+		if (($verbose) and ($verbose > 1)) { print "HOSTS RTV: $rtv\n"; }
+		print "DEBUG: SELECT id FROM agents_macs WHERE agent_id='$agent_id' AND mac_id='$mac_id';\n";
+		$record_id = -1;
+		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='$agent_id' AND mac_id='$mac_id';");
+		if ($record_id) {
+			print "AGENTS_MACS record exists.  Record_ID = $record_id \n"; 
+		} else {
+			$rtv = $sqlutils->execute_non_query("INSERT INTO agents_macs (agent_id,mac_id) VALUES ('$agent_id', '$mac_id');");
+		}
+		if (($verbose) and ($verbose > 1)) { print "AGENTS_MACS RTV: $rtv\n"; }
 	}
 }
