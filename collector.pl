@@ -37,6 +37,9 @@ print "Epoch now: $epoch_now \n" if ($verbose);
 # create the sql-utils object
 my $sqlutils = SQL::Utils->new('sqlite3', { 'db_filename' => $dbfile });
 
+my $sshbin = `which ssh`;
+chomp($sshbin);
+
 # sel autofluch to true
 local $| = 1;
 
@@ -79,25 +82,21 @@ if ($agents) {
 			$agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
 		}
 		my @files = &get_files($agnt);
-		my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
-		my $ssh;
-		eval{ $ssh  = Net::SSH::Perl->new($agnt, %sshparams); };
-		if ($@) {
-			die "There was a problem to connecing to agent $agnt: $@";
-		}
-		eval{ $ssh->login('root'); };
-		if ($@) { die "There was a problem logging into agent $agnt: $@"; }
+		#my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
+		#my $ssh  = Net::SSH::Perl->new($agnt, %sshparams) or die "There was a problem to connecing to agent $agnt: $!";
+		#$ssh->login('root') or die "There was a problem logging into agent $agnt: $!";
 		foreach my $f ( sort @files ) {
-			my ($stdout, $stderr, $exit);
-			eval{ ($stdout, $stderr, $exit) = $ssh->cmd("cat /var/lib/arpwatch/$f"); };
-			if ($@) { die "There was a problem with the command to agent $agnt: $@"; }
+			#my ($stdout, $stderr, $exit) = $ssh->cmd("cat /var/lib/arpwatch/$f") or die "There was a problem with the command to agent $agnt: $@";
 			#print "|$stdout|";
-			if ((!defined($stdout)) or ($stdout eq '')) {
-				print "No data in file ($f) from $agnt.\n";
-			} else {
-				my $rtv = &process_dat($stdout);
-				print "$agnt: process_dat RTV: $rtv\n";
-			}
+			#if ((!defined($stdout)) or ($stdout eq '')) {
+			#	print "No data in file ($f) from $agnt.\n";
+			#} else {
+			#	my $rtv = &process_dat($stdout);
+			#	print "$agnt: process_dat RTV: $rtv\n";
+			#}
+			my $blob = `$sshbin $agnt 'cat /var/lib/arpwatch/$f'`;
+			my $rtv = &process_dat($blob);
+			print "$agnt: process_dat RTV: $rtv\n";
 		}
 	}
 	close AGT or die "There was a problem closing the agents file: $!";
@@ -126,12 +125,9 @@ sub get_files {
 	my $host = shift;
 	my %sshparams = ( 'port' => '22', 'protocol' => 2, 'ciphers' => 'aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com');
 	my $ssh;
-	eval { $ssh = Net::SSH::Perl->new($host, %sshparams); };
-	if ($@) {
-		die "There was an error connecting to $host: $@";
-	}
-	$ssh->login('root');
-	my ($stdout, $stderr, $exit) = $ssh->cmd('ls /var/lib/arpwatch/');
+	$ssh = Net::SSH::Perl->new($host, %sshparams) or die "There was an error connecting to $host: $!";
+	$ssh->login('root') or die "Couldn't login tp $host: $!";
+	my ($stdout, $stderr, $exit) = $ssh->cmd('ls /var/lib/arpwatch/') or die "There was a problem running ls on $host: $!";
 	$stdout =~ s/\r?\n/ /g;
 	my @list = split(/ /, $stdout);
 	my @files = grep(!/dat\-$/, @list);
