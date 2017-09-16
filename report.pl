@@ -34,7 +34,7 @@ given ($report) {
 			print "SELECT ipaddr,fqdn FROM agents WHERE id='$id_ref->{'id'}'\n" if (($verbose) and ($verbose > 1));
 			my $agnt = $sqlutils->execute_single_row_query("SELECT ipaddr,fqdn FROM agents WHERE id='$id_ref->{'id'}'");
 			print Dumper($agnt) if (($verbose) and ($verbose < 1));
-			if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
+if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
 				$agents_mac_count{$agnt->{'ipaddr'}} = $count;
 			} else {
 				$agents_mac_count{$agnt->{'fqdn'}} = $count;
@@ -52,7 +52,26 @@ given ($report) {
 		print '=' x 72; print "\n";
 		my $oldest = &get_oldest('agent');
 		#print Dumper($oldest);
-		printf "| %13s | \n", "Oldest agent: ";
+		my $dateint = (keys(%{$oldest}))[0];
+		#print "dateint = $dateint\n";
+		if ($oldest->{$dateint}{'fqdn'}) {
+			printf "| %17s | %-52s\n", "Oldest agent: ", $oldest->{$dateint}{'fqdn'};
+		} else {
+			printf "| %17s | %-15s %33s|\n", "Oldest agent: ", $oldest->{$dateint}{'ipaddr'}, " ";
+		}
+		my $ltdi = localtime($dateint);
+		printf "| %17s | %-25s %23s|\n", "First seen: ", $ltdi, " ";
+		my $newest = &get_newest('agent');
+		#print Dumper($newest);
+		$dateint = (keys(%{$newest}))[0];
+		#print "dateint = $dateint\n";
+		if ($newest->{$dateint}{'fqdn'}) {
+			printf "| %17s | %-52s\n", "Newest agent: ", $newest->{$dateint}{'fqdn'};
+		} else {
+			printf "| %17s | %-15s %33s|\n", "Newest agent: ", $newest->{$dateint}{'ipaddr'}, " ";
+		}
+		$ltdi = localtime($dateint);
+		printf "| %17s | %-25s %23s|\n", "First seen: ", $ltdi, " ";
 		print '=' x 72; print "\n";
 	}
 	default {
@@ -90,7 +109,7 @@ sub get_oldest {
 			my $agents = $sqlutils->execute_multi_row_query('SELECT DISTINCT id FROM agents');
 			foreach my $agnt ( @{$agents} ) {
 				my $dateint = $sqlutils->execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='$agnt->{'id'}'");
-				if (($oldest == 0) or ($oldest < $dateint)) {
+				if (($oldest == 0) or ($oldest > $dateint)) {
 					$oldest = $dateint;
 					$oldest_id = $agnt->{'id'};
 				}
@@ -101,4 +120,27 @@ sub get_oldest {
 	my $old_obj = $sqlutils->execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='$oldest_id'");
 	$oldest{$oldest} = $old_obj;
 	return \%oldest;
+}
+
+sub get_newest {
+	my $what = shift;
+	my %newest;
+	my $newest = 0;
+	my $newest_id = 0;
+	given ($what) {
+		when ('agent') {
+			my $agents = $sqlutils->execute_multi_row_query('SELECT DISTINCT id FROM agents');
+			foreach my $agnt ( @{$agents} ) {
+				my $dateint = $sqlutils->execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='$agnt->{'id'}'");
+				if (($newest == 0) or ($newest < $dateint)) {
+					$newest = $dateint;
+					$newest_id = $agnt->{'id'};
+				}
+			}
+		}
+		default { die "Unrecognized entity ($what)!"; }
+	}
+	my $new_obj = $sqlutils->execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='$newest_id'");
+	$newest{$newest} = $new_obj;
+	return \%newest;
 }
