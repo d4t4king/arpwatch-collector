@@ -50,6 +50,10 @@ given ($report) {
 			printf "| %17s | %5d %43s|\n", $ag, $agents_mac_count{$ag}, " ";
 		}
 		print '=' x 72; print "\n";
+		my $oldest = &get_oldest('agent');
+		#print Dumper($oldest);
+		printf "| %13s | \n", "Oldest agent: ";
+		print '=' x 72; print "\n";
 	}
 	default {
 		warn "Unrecognized report type! ($report)";
@@ -74,4 +78,27 @@ Where:
 						agent-summary
 EOS
 	exit 0;
+}
+
+sub get_oldest {
+	my $what = shift;
+	my %oldest;
+	my $oldest = 0;
+	my $oldest_id = 0;
+	given ($what) {
+		when ('agent') {
+			my $agents = $sqlutils->execute_multi_row_query('SELECT DISTINCT id FROM agents');
+			foreach my $agnt ( @{$agents} ) {
+				my $dateint = $sqlutils->execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='$agnt->{'id'}'");
+				if (($oldest == 0) or ($oldest < $dateint)) {
+					$oldest = $dateint;
+					$oldest_id = $agnt->{'id'};
+				}
+			}
+		}
+		default { die "Unrecognized enity ($what)!"; }
+	}
+	my $old_obj = $sqlutils->execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='$oldest_id'");
+	$oldest{$oldest} = $old_obj;
+	return \%oldest;
 }
