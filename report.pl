@@ -21,14 +21,57 @@ GetOptions(
 
 my $sqlutils = SQL::Utils->new('sqlite3', {db_filename => $dbfile});
 
+my %agents_mac_count;
 given ($report) {
 	when ('agent-summary') {
 		# get the list of agents in the db
 		my $agent_ids = $sqlutils->execute_multi_row_query('SELECT id FROM agents;');
 		#print Dumper($agent_ids);
-		print scalar(@{$agent_ids})." agents in database.\n";
-		foreach my $id ( @{$agent_ids} ) {
-			print "Should be a hashref: ".ref($id)."\n";
+		foreach my $id_ref ( @{$agent_ids} ) {
+			print "Should be a hash: ".ref($id_ref)."\n" if (($verbose) and ($verbose > 1));
+			print "Should be a number: ".$id_ref->{'id'}."\n" if (($verbose) and ($verbose > 1));
+			my $count = $sqlutils->execute_atomic_int_query("SELECT COUNT(DISTINCT mac_id) FROM agents_macs WHERE agent_id='$id_ref->{'id'}';");
+			print "SELECT ipaddr,fqdn FROM agents WHERE id='$id_ref->{'id'}'\n" if (($verbose) and ($verbose > 1));
+			my $agnt = $sqlutils->execute_single_row_query("SELECT ipaddr,fqdn FROM agents WHERE id='$id_ref->{'id'}'");
+			print Dumper($agnt) if (($verbose) and ($verbose < 1));
+			if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
+				$agents_mac_count{$agnt->{'ipaddr'}} = $count;
+			} else {
+				$agents_mac_count{$agnt->{'fqdn'}} = $count;
+			}	
 		}
+		#print Dumper(\%agents_mac_count);
+		print '=' x 72; print "\n";
+		printf "| %5d agents in database. %43s|\n", scalar(@{$agent_ids}), " ";
+		print '=' x 72; print "\n";
+		printf "| %17s | %14s %33s |\n", "Agent IP/FQDN", "MAC Addr Count", " ";
+		print '=' x 72; print "\n";
+		foreach my $ag ( sort { $agents_mac_count{$b} <=> $agents_mac_count{$a} } keys %agents_mac_count ) {
+			printf "| %17s | %5d %43s|\n", $ag, $agents_mac_count{$ag}, " ";
+		}
+		print '=' x 72; print "\n";
 	}
+	default {
+		warn "Unrecognized report type! ($report)";
+	}
+}
+
+###############################################################################
+### SUBS
+###############################################################################
+sub usage {
+	print <<EOS;
+
+Prints various reports from the collected arpwatch data.
+
+Usage $0 -h -v -d <db file> -r <report>
+
+Where:
+-h|--help			Display this useful message then exit.
+-v|--verbose		Display output in increasing verbosity.  Primarily used for debugging.
+-d|--dbfile			Path to the database to report on.
+-r|--report			The type of report to display.  Available options are:
+						agent-summary
+EOS
+	exit 0;
 }
