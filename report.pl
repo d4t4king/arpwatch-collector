@@ -70,6 +70,9 @@ if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
 		}
 		$ltdi = localtime($dateint);
 		printf "| %17s | %-25s %23s|\n", "First seen: ", $ltdi, " ";
+		$last_updated = $sqlutils->execute_atomic_int_query("SELECT last_update FROM agents WHERE id='$newest->{$dateint}{'id'}';");
+		$ludi = localtime($last_updated);
+		printf "| %17s | %-25s %23s|\n", "Last updated: ", $ludi, " ";
 		print '=' x 72; print "\n";
 	}
 	default {
