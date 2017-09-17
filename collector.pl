@@ -50,6 +50,7 @@ foreach my $t ( keys %create_tables_sql ) {
 }
 print "done.\n";
 
+# process a list of agents to pull arp data from
 if ($agents) {
 	print "Processing agents file....\n";
 	open AGT, "<$agents" or die "There was a problem reading the agents file: $!";
@@ -69,7 +70,7 @@ if ($agents) {
 				} else {
 					$rtv = $sqlutils->execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('$agnt','$epoch_now','$epoch_now');");
 				}
-				print "AGT ip RTV: $rtv\n";
+				print "AGT ip RTV: $rtv\n" if ($verbose);
 			} else {
 				my $ptr = nslookup('host' => $agnt, 'type' => 'PTR');
 				if ((defined($ptr)) and ($ptr ne '')) {
@@ -77,7 +78,7 @@ if ($agents) {
 				} else {
 					$rtv = $sqlutils->execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('$agnt','$epoch_now','$epoch_now');");
 				}
-				print "AGT agnt RTV: $rtv\n";
+				print "AGT agnt RTV: $rtv\n" if ($verbose);
 			}
 			$agent_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='$agnt' OR fqdn='$agnt';");
 		}
@@ -85,7 +86,7 @@ if ($agents) {
 		foreach my $f ( sort @files ) {
 			my $blob = `$sshbin $agnt 'cat /var/lib/arpwatch/$f'`;
 			if ((!defined($blob)) or ($blob eq '')) {
-				print "Got no data from $agnt:/var/lib/arpwatch/$f\n";
+				print "Got no data from $agnt:/var/lib/arpwatch/$f\n" if ($verbose);
 			} else {
 				my $rtv  = &process_dat($blob, $agent_id);
 				print "$agnt: process_dat RTV: $rtv\n";
@@ -144,7 +145,7 @@ sub process_dat {
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO macs (mac_addr, date_discovered, last_updated) VALUES ('$mac', '$epoch_now', '$epoch_now');");
 		}
-		if (($verbose) and ($verbose > 1)) { print "MACS RTV: $rtv\n"; }
+		print "MACS RTV: $rtv\n" if (($verbose) and ($verbose > 1));
 		my $mac_id = $sqlutils->execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='$mac'");
 		$record_id = -1;
 		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='$ip';");
@@ -153,7 +154,7 @@ sub process_dat {
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO ipaddrs (mac_id, ipaddr, date_discovered, last_updated) VALUES ('$mac_id','$ip','$epoch_now','$epoch_now');");
 		}
-		if (($verbose) and ($verbose > 1)) { print "IPADDRS RTV: $rtv\n"; }
+		print "IPADDRS RTV: $rtv\n" if (($verbose) and ($verbose > 1));
 		my $ipaddr_id = $sqlutils->execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='$ip';");
 		$record_id = -1;
 		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='$mac_id' AND ipaddr_id='$ipaddr_id';");
@@ -162,15 +163,15 @@ sub process_dat {
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('$mac_id','$ipaddr_id','$epoch_now','$epoch_now');");
 		}
-		if (($verbose) and ($verbose > 1)) { print "HOSTS RTV: $rtv\n"; }
-		print "DEBUG: SELECT id FROM agents_macs WHERE agent_id='$agent_id' AND mac_id='$mac_id';\n";
+		print "HOSTS RTV: $rtv\n" if (($verbose) and ($verbose > 1));
+		print "DEBUG: SELECT id FROM agents_macs WHERE agent_id='$agent_id' AND mac_id='$mac_id';\n" if (($verbose) and ($verbose > 2));
 		$record_id = -1;
 		$record_id = $sqlutils->execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='$agent_id' AND mac_id='$mac_id';");
 		if ($record_id) {
-			print "AGENTS_MACS record exists.  Record_ID = $record_id \n"; 
+			print "AGENTS_MACS record exists.  Record_ID = $record_id \n" if (($verbose) and ($verbose > 1)); 
 		} else {
 			$rtv = $sqlutils->execute_non_query("INSERT INTO agents_macs (agent_id,mac_id) VALUES ('$agent_id', '$mac_id');");
 		}
-		if (($verbose) and ($verbose > 1)) { print "AGENTS_MACS RTV: $rtv\n"; }
+		print "AGENTS_MACS RTV: $rtv\n" if (($verbose) and ($verbose > 1));
 	}
 }
