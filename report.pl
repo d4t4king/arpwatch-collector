@@ -40,7 +40,6 @@ if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
 				$agents_mac_count{$agnt->{'fqdn'}} = $count;
 			}	
 		}
-		#print Dumper(\%agents_mac_count);
 		print '=' x 72; print "\n";
 		printf "| %5d agents in database. %43s|\n", scalar(@{$agent_ids}), " ";
 		print '=' x 72; print "\n";
@@ -51,9 +50,7 @@ if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
 		}
 		print '=' x 72; print "\n";
 		my $oldest = &get_oldest('agent');
-		#print Dumper($oldest);
 		my $dateint = (keys(%{$oldest}))[0];
-		#print "dateint = $dateint\n";
 		if ($oldest->{$dateint}{'fqdn'}) {
 			printf "| %17s | %-52s\n", "Oldest agent: ", $oldest->{$dateint}{'fqdn'};
 		} else {
@@ -61,10 +58,11 @@ if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
 		}
 		my $ltdi = localtime($dateint);
 		printf "| %17s | %-25s %23s|\n", "First seen: ", $ltdi, " ";
+		my $last_updated = $sqlutils->execute_atomic_int_query("SELECT last_update FROM agents WHERE id='$oldest->{$dateint}{'id'}';");
+		my $ludi = localtime($last_updated);
+		printf "| %17s | %-25s %23s|\n", "Last updated: ", $ludi, " ";
 		my $newest = &get_newest('agent');
-		#print Dumper($newest);
 		$dateint = (keys(%{$newest}))[0];
-		#print "dateint = $dateint\n";
 		if ($newest->{$dateint}{'fqdn'}) {
 			printf "| %17s | %-52s\n", "Newest agent: ", $newest->{$dateint}{'fqdn'};
 		} else {
