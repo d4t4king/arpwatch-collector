@@ -1,11 +1,14 @@
 #!/usr/bin/python
 
+import re
 import pprint
 import os.path
 import sqlite3
 import argparse
 import datetime
+import dns.resolver
 #import paramiko
+from subprocess import check_output
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -46,6 +49,22 @@ def get_data():
     blob = f.read()
     f.close()
     return blob
+
+def get_files(host):
+    files = []
+    output = check_output(['/usr/bin/ssh', host, 'ls /var/lib/arpwatch/'])
+    for f in output.splitlines():
+        # skip files ending in .new or -.  These are likely cache files and we don't want to process them
+        if re.search(r'(\.new|\-)$', f):
+            continue
+        # skip the ethercodes.dat files.  These are vendor translations for mac addresses.
+        # we may want to include this in the future, but it will probably be easier to
+        # just get the data from IEEE
+        if re.search(r'ethercodes\.(dat|db)', f):
+            continue
+        files.append(f)
+    #pp.pprint(files)
+    return files
         
 def process_dat(data_blob, agent_id=0):
     sql = ''
@@ -54,7 +73,7 @@ def process_dat(data_blob, agent_id=0):
         fields = line.split('\t')
         record_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='" + fields[0] + "'")
         if record_id:
-            print("Got record ID for mac " + fields[0] + ".  ID is " + str(record_id) + ".")
+            #print("Got record ID for mac " + fields[0] + ".  ID is " + str(record_id) + ".")
             execute_non_query("UPDATE macs SET last_updated='" + str(epoch_now.strftime('%s')) + "'")
         else:
             print("No record id for mac " + fields[0] + ".")
@@ -62,7 +81,7 @@ def process_dat(data_blob, agent_id=0):
         mac_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='" + fields[0] + "'")
         record_id = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='" + fields[1] + "'")
         if record_id:
-            print("Got record ID for ip address " + fields[1] + ".  ID is " + str(record_id) + ".")
+            #print("Got record ID for ip address " + fields[1] + ".  ID is " + str(record_id) + ".")
             execute_non_query("UPDATE ipaddrs SET last_updated='" + str(epoch_now.strftime('%s')) + "'")
         else:
             print("No record id for ip address " + fields[1] + " ")
@@ -70,14 +89,14 @@ def process_dat(data_blob, agent_id=0):
         ipid = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='" + fields[1] + "'")
         record_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='" + str(mac_id) + "' AND ipaddr_id='" + str(ipid) + "'")
         if record_id:
-            print("Got record ID for host with mac_id (" + str(mac_id) + ") and ip id (" + str(ipid) + ")")
+            #print("Got record ID for host with mac_id (" + str(mac_id) + ") and ip id (" + str(ipid) + ")")
             execute_non_query("UPDATE hosts SET last_updated='" + str(epoch_now.strftime('%s')) + "' WHERE mac_id='" + str(mac_id) + "' AND ipaddr_id='" + str(ipid) + "'")
         else:
             print("No record id for host with mac id (" + str(mac_id) + ") and ip id (" + str(ipid) + ")")
             execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('" + str(mac_id) + "','" + str(ipid) + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
         host_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='" + str(mac_id) + "' AND ipaddr_id='" + str(ipid) + "'")
         if args.agents_file:
-            record_id = execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='" + str(agnet_id) + "' AND mac_id='" + str(mac_id) + "'")
+            record_id = execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='" + str(agent_id) + "' AND mac_id='" + str(mac_id) + "'")
 
 def main():
     create_tables_sql = {
@@ -94,12 +113,49 @@ def main():
         for sql in create_tables_sql:
             cur.execute(create_tables_sql[sql])
         print("done.")
+        conn.commit()
+        conn.close()
 
         if args.agents_file:
-            print("We're not handling multiple agents yet, just the local host.")
+            #print("We're not handling multiple agents yet, just the local host.")
             with open(args.agents_file, 'r') as f:
                 for line in f:
-                    print("Agent: " + line.strip())
+                    # skip empty lines (?)
+                    if not line:
+                        continue
+                    # skip commented lines
+                    if re.match(r'^#', line):
+                        continue
+                    agnt = line.strip()
+                    print("Agent: " + agnt)
+                    agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
+                    if agent_id:
+                        print("Got agent ID: " + str(agent_id) + ".")
+                        execute_non_query("UPDATE agents SET last_update='" + str(epoch_now.strftime('%s')) + "' WHERE id='" + str(agent_id) + "'")
+                    else:
+                        if re.search(r'^(\d+\.){3}(\d+)$', agnt):               # looks like IP address
+                            a = dns.resolver.query(agnt, 'A')
+                            if a:
+                                execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + a + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                            else:
+                                execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                        else:                                                   # assume it looks like an FQDN
+                            ptr = dns.resolver.query(agnt, 'PTR')
+                            if ptr:
+                                execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + ptr + "','" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                            else:
+                                execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                        agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
+                    
+                    files = get_files(agnt)
+                    for f in files:
+                        print("Processing file: " + f + " from agent " + agnt)
+                        blob = check_output(['/usr/bin/ssh', agnt, 'cat /var/lib/arpwatch/' + f])
+                        if blob:
+                            process_dat(blob, agent_id)
+                        else:
+                            print("Got no data from " + agnt + ":/var/lib/arpwatch/" + f)
+                            
         else:
             blob = get_data()
             process_dat(blob)
