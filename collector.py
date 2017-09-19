@@ -67,6 +67,17 @@ def process_dat(data_blob, agent_id=0):
         else:
             print("No record id for ip address " + fields[1] + " ")
             execute_non_query("INSERT INTO ipaddrs (mac_id,ipaddr,date_discovered,last_updated) VALUES ('" + str(mac_id) + "','" + fields[1] + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+        ipid = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='" + fields[1] + "'")
+        record_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='" + str(mac_id) + "' AND ipaddr_id='" + str(ipid) + "'")
+        if record_id:
+            print("Got record ID for host with mac_id (" + str(mac_id) + ") and ip id (" + str(ipid) + ")")
+            execute_non_query("UPDATE hosts SET last_updated='" + str(epoch_now.strftime('%s')) + "' WHERE mac_id='" + str(mac_id) + "' AND ipaddr_id='" + str(ipid) + "'")
+        else:
+            print("No record id for host with mac id (" + str(mac_id) + ") and ip id (" + str(ipid) + ")")
+            execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('" + str(mac_id) + "','" + str(ipid) + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+        host_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='" + str(mac_id) + "' AND ipaddr_id='" + str(ipid) + "'")
+        if args.agents_file:
+            record_id = execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='" + str(agnet_id) + "' AND mac_id='" + str(mac_id) + "'")
 
 def main():
     create_tables_sql = {
@@ -86,11 +97,14 @@ def main():
 
         if args.agents_file:
             print("We're not handling multiple agents yet, just the local host.")
+            with open(args.agents_file, 'r') as f:
+                for line in f:
+                    print("Agent: " + line.strip())
         else:
             blob = get_data()
             process_dat(blob)
     else:
         print("Need a database file.")
 
-#if __name__ == "main":
-main()
+if __name__ == "__main__":
+    main()
