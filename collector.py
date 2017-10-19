@@ -134,7 +134,11 @@ def main():
                         execute_non_query("UPDATE agents SET last_update='" + str(epoch_now.strftime('%s')) + "' WHERE id='" + str(agent_id) + "'")
                     else:
                         if re.search(r'^(\d+\.){3}(\d+)$', agnt):               # looks like IP address
-                            a = dns.resolver.query(agnt, 'A')
+                            a = ''
+                            try:
+                                a = dns.resolver.query(agnt, 'A')
+                            except dns.resolver.NXDOMAIN, nx:
+                                a = 'UNRESOLVED'
                             if a:
                                 execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + a + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                             else:
