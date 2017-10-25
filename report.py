@@ -10,6 +10,7 @@ pp = pprint.PrettyPrinter(indent=4)
 args_parse = argparse.ArgumentParser(description="Get those ARPs!")
 args_parse.add_argument('-d', '--dbfile', dest='dbfile', help='The database file to read the collected data from.')
 args_parse.add_argument('-r', '--report', dest='report_type', help='The type of report to run.  Available options are: agent-summary.')
+args = args_parse.parse_args()
 
 def execute_atomic_int_query(sql):
 	conn = sqlite3.connect(args.dbfile)

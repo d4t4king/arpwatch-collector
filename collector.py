@@ -140,7 +140,7 @@ def main():
                             except dns.resolver.NXDOMAIN, nx:
                                 a = 'UNRESOLVED'
                             if a:
-                                execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + a + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                                execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(a) + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                             else:
                                 execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                         else:                                                   # assume it looks like an FQDN
