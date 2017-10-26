@@ -23,7 +23,10 @@ def execute_atomic_int_query(sql):
     conn = sqlite3.connect(args.dbfile)
     with conn:
         cur = conn.cursor()
-        cur.execute(sql)
+        try:
+            cur.execute(sql)
+        except ValueError, err:
+            return -1
         conn.commit()
         result = cur.fetchone()
         my_int = 0
@@ -62,6 +65,9 @@ def get_files(host):
         # just get the data from IEEE
         if re.search(r'ethercodes\.(dat|db)', f):
             continue
+        # skip the default collection database file
+        if re.search(r'collection\.db', f):
+            continue
         files.append(f)
     #pp.pprint(files)
     return files
@@ -71,15 +77,16 @@ def process_dat(data_blob, agent_id=0):
     for line in data_blob.splitlines():
         # mac_add, ip_addr, epoch, name, iface
         fields = line.split('\t')
-        record_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='" + fields[0] + "'")
+        pp.pprint(fields)
+        record_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
         if record_id:
             #print("Got record ID for mac " + fields[0] + ".  ID is " + str(record_id) + ".")
             execute_non_query("UPDATE macs SET last_updated='" + str(epoch_now.strftime('%s')) + "'")
         else:
             print("No record id for mac " + fields[0] + ".")
             execute_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('" + fields[0] + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
-        mac_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='" + fields[0] + "'")
-        record_id = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='" + fields[1] + "'")
+        mac_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
+        record_id = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='{0}'".format(fields[1]))
         if record_id:
             #print("Got record ID for ip address " + fields[1] + ".  ID is " + str(record_id) + ".")
             execute_non_query("UPDATE ipaddrs SET last_updated='" + str(epoch_now.strftime('%s')) + "'")
