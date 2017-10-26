@@ -8,7 +8,7 @@ use Getopt::Long;
 use Net::SSH::Perl;
 use Net::Nslookup;
 
-use lib 'SQL-Utils/lib/';
+use lib '../SQL-Utils/lib/';
 use SQL::Utils;
 
 my ($help, $verbose, $dbfile, $agents);
@@ -123,6 +123,7 @@ sub get_files {
 	my @list = split(/ /, $blob);
 	@list = grep(!/ethercodes\./, @list);
 	@list = grep(!/\.new$/, @list);
+    @list = grep(!/collection\.db/, @list);
 	my @files = grep(!/\-$/, @list);
 	return @files;
 }
