@@ -1,0 +1,21 @@
+
+
+if agents list:
+  open the list of agents (if provided)
+  loop through agents
+    skip comments
+    get agent id from database
+    if it exists
+      update last_update date/time
+    else
+      try to get the name if IP or IP if name
+      create the agent record
+
+    get the list of files from the agent
+    loop through the list of files
+      process_data:
+        add mac if new or update last_updated
+        add ip if new or update last_updated
+        .....
+else:
+  process local agent

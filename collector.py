@@ -113,6 +113,7 @@ def main():
         'hosts': 'CREATE TABLE IF NOT EXISTS hosts (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, mac_id INTEGER, ipaddr_id INTEGER, date_discovered INTEGER, last_updated INTEGER)',
         'agents_macs': 'CREATE TABLE IF NOT EXISTS agents_macs (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, agent_id INTEGER, mac_id INTEGER)'
     }
+    # create the tables in the sqlite3 database
     if args.dbfile:
         conn = sqlite3.connect(args.dbfile)
         cur = conn.cursor()
@@ -122,64 +123,70 @@ def main():
         print("done.")
         conn.commit()
         conn.close()
-
-        if args.agents_file:
-            #print("We're not handling multiple agents yet, just the local host.")
-            with open(args.agents_file, 'r') as f:
-                for line in f:
-                    # skip empty lines (?)
-                    if not line:
-                        continue
-                    # skip commented lines
-                    if re.match(r'^#', line):
-                        continue
-                    agnt = line.strip()
-                    print("Agent: " + agnt)
-                    agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
-                    if agent_id:
-                        print("Got agent ID: " + str(agent_id) + ".")
-                        execute_non_query("UPDATE agents SET last_update='" + str(epoch_now.strftime('%s')) + "' WHERE id='" + str(agent_id) + "'")
-                    else:
-                        if re.search(r'^(\d+\.){3}(\d+)$', agnt):               # looks like IP address
-                            a = ''
-                            try:
-                                a = dns.resolver.query(agnt, 'A')
-                            except dns.resolver.NXDOMAIN, nx:
-                                a = 'UNRESOLVED'
-                            if a:
-                                #pp.pprint(a.rrset)
-                                #print dir(a.rrset)
-                                print a.rrset.name
-                                #exit(1)
-                                execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(a.rrset.name) + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
-                            else:
-                                execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
-                        else:                                                   # assume it looks like an FQDN
-                            ptr = ''
-                            try:
-                                ptr = dns.resolver.query(agnt, 'PTR')
-                            except dns.resolver.NoAnswer, err:
-                                ptr = 'NOPTR'
-                            if ptr and not ptr == 'NOPTR':
-                                execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + ptr + "','" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
-                            else:
-                                execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
-                        agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
-
-                    files = get_files(agnt)
-                    for f in files:
-                        print("Processing file: " + f + " from agent " + agnt)
-                        blob = check_output(['/usr/bin/ssh', agnt, 'cat /var/lib/arpwatch/' + f])
-                        if blob:
-                            process_dat(blob, agent_id)
-                        else:
-                            print("Got no data from " + agnt + ":/var/lib/arpwatch/" + f)
-
-        else:
-            blob = get_data()
-            process_dat(blob)
     else:
-        print("Need a database file.")
+        raise Exception("Need a database file!")
+
+    ### if agents list
+    if args.agents_file:
+        ### open the list of agents
+        with open(args.agents_file, 'r') as f:
+            ### loop through the agents
+            for line in f:
+                # skip empty lines (?)
+                if not line:
+                    continue
+                ### skip commented lines
+                if re.match(r'^#', line):
+                    continue
+                agnt = line.strip()
+                print("Agent: " + agnt)
+                ### get agent id from database
+                agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
+                ### if it exists
+                if agent_id:
+                    print("Got agent ID: " + str(agent_id) + ".")
+                    ### update the last_updated date/time
+                    execute_non_query("UPDATE agents SET last_update='" + str(epoch_now.strftime('%s')) + "' WHERE id='" + str(agent_id) + "'")
+                else:
+                    ### try to get the name/IP
+                    ### create the agent record
+                    if re.search(r'^(\d+\.){3}(\d+)$', agnt):               # looks like IP address
+                        a = ''
+                        try:
+                            a = dns.resolver.query(agnt, 'A')
+                        except dns.resolver.NXDOMAIN, nx:
+                            a = 'UNRESOLVED'
+                        if a:
+                            #pp.pprint(a.rrset)
+                            #print dir(a.rrset)
+                            print a.rrset.name
+                            #exit(1)
+                            execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(a.rrset.name) + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                        else:
+                            execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                    else:                                                   # assume it looks like an FQDN
+                        ptr = ''
+                        try:
+                            ptr = dns.resolver.query(agnt, 'PTR')
+                        except dns.resolver.NoAnswer, err:
+                            ptr = 'NOPTR'
+                        if ptr and not ptr == 'NOPTR':
+                            execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + ptr + "','" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                        else:
+                            execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
+                    agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
+                files = get_files(agnt)
+                for f in files:
+                    print("Processing file: " + f + " from agent " + agnt)
+                    blob = check_output(['/usr/bin/ssh', agnt, 'cat /var/lib/arpwatch/' + f])
+                    if blob:
+                        process_dat(blob, agent_id)
+                    else:
+                        print("Got no data from " + agnt + ":/var/lib/arpwatch/" + f)
+        else:
+        blob = get_data()
+        process_dat(blob)
+
 
 if __name__ == "__main__":
     main()

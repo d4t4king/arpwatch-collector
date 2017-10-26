@@ -34,11 +34,11 @@ given ($report) {
 			print "SELECT ipaddr,fqdn FROM agents WHERE id='$id_ref->{'id'}'\n" if (($verbose) and ($verbose > 1));
 			my $agnt = $sqlutils->execute_single_row_query("SELECT ipaddr,fqdn FROM agents WHERE id='$id_ref->{'id'}'");
 			print Dumper($agnt) if (($verbose) and ($verbose < 1));
-if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
+			if ((!defined($agnt->{'fqdn'})) or ($agnt->{'fqdn'} eq '')) {
 				$agents_mac_count{$agnt->{'ipaddr'}} = $count;
 			} else {
 				$agents_mac_count{$agnt->{'fqdn'}} = $count;
-			}	
+			}
 		}
 		print '=' x 72; print "\n";
 		printf "| %5d agents in database. %43s|\n", scalar(@{$agent_ids}), " ";
