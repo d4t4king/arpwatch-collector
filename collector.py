@@ -15,7 +15,7 @@ pp = pprint.PrettyPrinter(indent=4)
 epoch_now = datetime.datetime.now()
 
 args_parse = argparse.ArgumentParser(description="Get those ARPs!")
-args_parse.add_argument('-d', '--dbfile', dest='dbfile', help="The database file to store the collected data in.")
+args_parse.add_argument('-d', '--dbfile', dest='dbfile', default='/var/lib/arpwatch/collection.db', help="The database file to store the collected data in.")
 args_parse.add_argument('-a', '--agents', dest='agents_file', help="The list of end points to colect from")
 args = args_parse.parse_args()
 
@@ -65,7 +65,7 @@ def get_files(host):
         files.append(f)
     #pp.pprint(files)
     return files
-        
+
 def process_dat(data_blob, agent_id=0):
     sql = ''
     for line in data_blob.splitlines():
@@ -154,7 +154,7 @@ def main():
                             else:
                                 execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                         agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
-                    
+
                     files = get_files(agnt)
                     for f in files:
                         print("Processing file: " + f + " from agent " + agnt)
@@ -163,7 +163,7 @@ def main():
                             process_dat(blob, agent_id)
                         else:
                             print("Got no data from " + agnt + ":/var/lib/arpwatch/" + f)
-                            
+
         else:
             blob = get_data()
             process_dat(blob)
