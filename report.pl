@@ -19,6 +19,15 @@ GetOptions(
 	'r|report=s'	=>	\$report,
 );
 
+if ((!defined($dbfile)) or ($dbfile eq '')) {
+    $dbfile = '/var/lib/arpwatch/collection.db';
+}
+
+if ((!defined($report)) or ($report eq '')) {
+    print "Specify a report type.\n";
+    &usage();
+}
+
 my $sqlutils = SQL::Utils->new('sqlite3', {db_filename => $dbfile});
 
 my %agents_mac_count;
