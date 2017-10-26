@@ -148,8 +148,12 @@ def main():
                             else:
                                 execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                         else:                                                   # assume it looks like an FQDN
-                            ptr = dns.resolver.query(agnt, 'PTR')
-                            if ptr:
+                            ptr = ''
+                            try:
+                                ptr = dns.resolver.query(agnt, 'PTR')
+                            except dns.resolver.NoAnswer, err:
+                                ptr = 'NOPTR'
+                            if ptr and not ptr == 'NOPTR':
                                 execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + ptr + "','" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                             else:
                                 execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
