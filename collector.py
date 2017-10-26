@@ -6,9 +6,10 @@ import os.path
 import sqlite3
 import argparse
 import datetime
+import subprocess
 import dns.resolver
 #import paramiko
-from subprocess import check_output
+#from subprocess import check_output, CalledProcessError
 
 pp = pprint.PrettyPrinter(indent=4)
 
@@ -55,7 +56,20 @@ def get_data():
 
 def get_files(host):
     files = []
-    output = check_output(['/usr/bin/ssh', host, 'ls /var/lib/arpwatch/'])
+    try:
+        output = subprocess.check_output(['/usr/bin/ssh', host, 'ls /var/lib/arpwatch/'], stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError, err:
+        #print "Error output: {0}".format(err.output)
+        #print "Error message: {0}".format(err.message)
+        #print "Error returncode: {0}".format(err.returncode)
+        #print "Error string: {0}".format(str(err))
+        #print str(dir(err))
+        if err.returncode == 255:
+            # likely ssh timed out becuse system offline or otherwise unavailable
+            return err.returncode
+        else:
+            raise err
+        
     for f in output.splitlines():
         # skip files ending in .new or -.  These are likely cache files and we don't want to process them
         if re.search(r'(\.new|\-)$', f):
@@ -156,9 +170,9 @@ def main():
                             a = dns.resolver.query(agnt, 'A')
                         except dns.resolver.NXDOMAIN, nx:
                             a = 'UNRESOLVED'
-                        if a:
-                            #pp.pprint(a.rrset)
-                            #print dir(a.rrset)
+                        if a and not 'UNRESOLVED' in a:
+                            pp.pprint(a.rrset)
+                            print dir(a.rrset)
                             print a.rrset.name
                             #exit(1)
                             execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(a.rrset.name) + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
@@ -176,14 +190,17 @@ def main():
                             execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('" + agnt + "','" + str(epoch_now.strftime('%s')) + "','" + str(epoch_now.strftime('%s')) + "')")
                     agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='" + agnt + "' OR fqdn='" + agnt + "'")
                 files = get_files(agnt)
-                for f in files:
-                    print("Processing file: " + f + " from agent " + agnt)
-                    blob = check_output(['/usr/bin/ssh', agnt, 'cat /var/lib/arpwatch/' + f])
-                    if blob:
-                        process_dat(blob, agent_id)
-                    else:
-                        print("Got no data from " + agnt + ":/var/lib/arpwatch/" + f)
-        else:
+                if files and 'list' in str(type(files)):
+                    for f in files:
+                        print("Processing file: " + f + " from agent " + agnt)
+                        blob = subprocess.check_output(['/usr/bin/ssh', agnt, 'cat /var/lib/arpwatch/' + f])
+                        if blob:
+                            process_dat(blob, agent_id)
+                        else:
+                            print("Got no data from " + agnt + ":/var/lib/arpwatch/" + f)
+                else:
+                    print("There was a poroblem getting the files from agent ({0})!".format(agnt))
+    else:
         blob = get_data()
         process_dat(blob)
 
