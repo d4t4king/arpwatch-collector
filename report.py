@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import time
 import pprint
 import sqlite3
 import argparse
@@ -49,8 +50,37 @@ def execute_multi_row_query(sql):
 def get_oldest(what):
     if what == 'agent':
         agents = execute_multi_row_query('SELECT DISTINCT id FROM agents')
+        oldest_d = {}
+        oldest_i = 0
+        oldest_date = 0
+        for agnt in agents:
+            #pp.pprint(agnt)            # returns a list of tuples (1,)
+            dateint = execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='{0}'".format(agnt[0]))
+            if oldest_date == 0 or oldest_date > dateint:
+                oldest_date = dateint
+                oldest_i = agnt[0]
     else:
         raise Exception("Unrecognized entity ({0})".format(what))
+    old_obj = execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='{0}'".format(oldest_i))
+    oldest_d[oldest_date] = old_obj
+    return oldest_d
+
+def get_newest(what):
+    if what == 'agent':
+        agents = execute_multi_row_query('SELECT DISTINCT id FROM agents')
+        newest_d = {}
+        newest_i = 0
+        newest_date = 0
+        for agnt in agents:
+            dateint = execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='{0}'".format(agnt[0]))
+            if newest_date == 0 or newest_date < dateint:
+                newest_date = dateint
+                newest_i = agnt[0]
+    else:
+        raise Exception("Unrecognized entity ({0})".format(what))
+    new_obj = execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='{0}'".format(newest_i))
+    newest_d[newest_i] = new_obj
+    return newest_d
 
 def main():
     agents_mac_count = {}
@@ -75,7 +105,25 @@ def main():
             print "| %27s | %5d %33s|" % (key, val, " ")
         print "========================================================================"
         oldest = get_oldest('agent')
-		pp.pprint(oldest)
+        dateint = oldest.keys()[0]
+        if oldest[dateint][2] and not oldest[dateint][2] == 'None':
+            print "| %17s | %-49s|" % ("Oldest agent: ", oldest[dateint][2])
+        else:
+            print "| %17s | %-15s %30s|" % ("Oldest agent: ", oldest[dateint][1], " ")
+        print "| %17s | %-25s %23s|" % ("First seen: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(dateint)), " ")
+        last_updated = execute_atomic_int_query("SELECT last_update FROM agents WHERE id='{0}'".format(oldest[dateint][0]))
+        print "| %17s | %-25s %23s|" % ("Last updated: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(last_updated)), " ")
+        print '------------------------------------------------------------------------'
+        newest = get_newest('agent')
+        dateint = newest.keys()[0]
+        if newest[dateint][2] and not newest[dateint][2] == 'None':
+            print "| %17s | %-49s|" % ("Newest agent: ", newest[dateint][2])
+        else:
+            print "| %17s | %-49s|" % ("Newest agent: ", newest[dateint][1])
+        print "| %17s | %-25s %23s|" % ("First seen: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(dateint)), "")
+        last_updated = execute_atomic_int_query("SELECT last_update FROM agents WHERE id='{0}'".format(newest[dateint][0]))
+        print "| %17s | %-25s %23s|" % ("Last updated: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(last_updated)), " ")
+        print "========================================================================"
     else:
         raise Exception("Unrecognized report type! ({0})".format(args.report_type))
 
