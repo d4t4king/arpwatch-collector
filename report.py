@@ -46,6 +46,12 @@ def execute_multi_row_query(sql):
 		results = cur.fetchall()
 	return results
 
+def get_oldest(what):
+    if what == 'agent':
+        agents = execute_multi_row_query('SELECT DISTINCT id FROM agents')
+    else:
+        raise Exception("Unrecognized entity ({0})".format(what))
+
 def main():
     agents_mac_count = {}
     if args.report_type == 'agent-summary':
@@ -68,6 +74,8 @@ def main():
         for key, val in sorted(agents_mac_count.iteritems(), key=lambda (k,v): (v,k), reverse=True):
             print "| %27s | %5d %33s|" % (key, val, " ")
         print "========================================================================"
+        oldest = get_oldest('agent')
+		pp.pprint(oldest)
     else:
         raise Exception("Unrecognized report type! ({0})".format(args.report_type))
 
