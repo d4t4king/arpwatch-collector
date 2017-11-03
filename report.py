@@ -124,6 +124,14 @@ def main():
         last_updated = execute_atomic_int_query("SELECT last_update FROM agents WHERE id='{0}'".format(newest[dateint][0]))
         print "| %17s | %-25s %23s|" % ("Last updated: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(last_updated)), " ")
         print "========================================================================"
+    elif args.report_type == 'client-summary':
+        total_macs = execute_atomic_int_query("SELECT COUNT(DISTINCT mac_addr) FROM macs")
+        total_ips = execute_atomic_int_query("SELECT COUNT(DISTINCT ipaddr) FROM ipaddrs")
+        print "========================================================================"
+        print "| Total unique MAC Addresses: %-41s|" % (total_macs)
+        print '------------------------------------------------------------------------'
+        print "| Total unique IP addresses: %-42s|" % (total_ips) 
+        print "========================================================================"
     else:
         raise Exception("Unrecognized report type! ({0})".format(args.report_type))
 
