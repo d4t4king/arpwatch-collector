@@ -47,18 +47,29 @@ def execute_multi_row_query(sql):
 	return results
 
 def main():
-	agents_mac_count = {}
-	if args.report_type == 'agent-summary':
-		agent_ids = execute_multi_row_query('SELECT id FROM agents')
-		for id in agent_ids:
-			count = execute_atomic_int_query("SELECT COUNT(DISTINCT mac_id) FROM agents_macs WHERE agent_id='{0}'".format(id[0]))
-			agnt = execute_single_row_query("SELECT ipaddr,fqdn FROM AGENTS WHERE id='{0}'".format(id[0]))
-			#pp.pprint(agnt)
-			if agnt[1] and not agnt[1] == 'None':
-				agents_mac_count[agnt[1]] = count
-			else:
-				agents_mac_count[agnt[0]] = count
-		pp.pprint(agents_mac_count)
+    agents_mac_count = {}
+    if args.report_type == 'agent-summary':
+        agent_ids = execute_multi_row_query('SELECT id FROM agents')
+        for id in agent_ids:
+            count = execute_atomic_int_query("SELECT COUNT(DISTINCT mac_id) FROM agents_macs WHERE agent_id='{0}'".format(id[0]))
+            agnt = execute_single_row_query("SELECT ipaddr,fqdn FROM AGENTS WHERE id='{0}'".format(id[0]))
+            #pp.pprint(agnt)
+            if agnt[1] and not agnt[1] == 'None':
+                agents_mac_count[agnt[1]] = count
+            else:
+                agents_mac_count[agnt[0]] = count
+        #pp.pprint(agents_mac_count)
+        
+        print "========================================================================"
+        print "| %5d agents in database. %43s|" % (len(agent_ids), " ")
+        print "========================================================================"
+        print "| %27s | %14s %23s |" % ("Agent IP/FQDN", "MAC Addr Count", " ")
+        print "========================================================================"
+        for key, val in sorted(agents_mac_count.iteritems(), key=lambda (k,v): (v,k), reverse=True):
+            print "| %27s | %5d %33s|" % (key, val, " ")
+        print "========================================================================"
+    else:
+        raise Exception("Unrecognized report type! ({0})".format(args.report_type))
 
 if __name__ == '__main__':
-	main()
+    main()
