@@ -151,11 +151,13 @@ def main():
         print "========================================================================"
         oldest = get_oldest('client')
         dateint = oldest.keys()[0]
+        print "| Oldest Client: %54s|" % " "
         print "| %-10s %17s %-10s %-29s|" % ("MAC Addr:", oldest[dateint][1], "IP Addr:", oldest[dateint][2])
         print "| %-17s %-50s |" % ("Date Discovered: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(dateint)))
         print '------------------------------------------------------------------------'
         newest = get_newest('client')
         dateint = newest.keys()[0]
+        print "| Newest Client: %54s|" % " "
         print "| %-10s %17s %-10s %-29s|" % ("MAC Addr:", newest[dateint][1], "IP Addr:", newest[dateint][2])
         print "| %-17s %-50s |" % ("Date Discovered: ", time.strftime('%m/%d/%y %H:%M:%S', time.localtime(dateint)))
         print "========================================================================"
