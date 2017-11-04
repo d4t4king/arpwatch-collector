@@ -85,30 +85,44 @@ def process_dat(data_blob, agent_id=0):
     for line in data_blob.splitlines():
         # mac_add, ip_addr, epoch, name, iface
         fields = line.split('\t')
-        #pp.pprint(fields)
+        pp.pprint(fields)
+        # check if the record for the mac address is already in the database
         record_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
         if record_id:
-            #print("Got record ID for mac " + fields[0] + ".  ID is " + str(record_id) + ".")
-            execute_non_query("UPDATE macs SET last_updated='{0}'".format(epoch_now.strftime('%s')))
+            # we found an id for that mac, so now check if the date matches that in the file
+            lastUpdated = execute_atomic_int_query("SELECT last_updated FROM macs WHERE id='{0}'".format(record_id))
+            if lastUpdated < fields[2]:
+                # update the db date with that from the file
+                execute_non_query("UPDATE macs SET last_updated='{0}' WHERE id='{1}'".format(fields[2], record_id))
+            # otherwise don't do anything:
+            # if the db date is greater than the file date, do nothing
+            # if the db date is the same as the file date do nothing
         else:
+            # no record found, so create a new one
             print("No record id for mac {0}.".format(fields[0]))
-            execute_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}')".format(fields[0], epoch_now.strftime('%s'), epoch_now.strftime('%s')))
+            # date_discovered = now, last_updated = file date
+            execute_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('{0}','{1}','{3}')".format(fields[0], epoch_now.strftime('%s'), fields[2]))
+        # reacquire the mac id and
         mac_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
+        # check for a record for the IP address
         record_id = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='{0}'".format(fields[1]))
+        # if we find a record, update the last update date from the file
         if record_id:
-            #print("Got record ID for ip address " + fields[1] + ".  ID is " + str(record_id) + ".")
-            execute_non_query("UPDATE ipaddrs SET last_updated='{0}'".format(epoch_now.strftime('%s')))
+            lastUpdated = execute_atomic_int_query("SELECT last_updated FROM ipaddrs WHERE id='{0}'".format(record_id))
+            if lastUpdated < fields[2]:
+                execute_non_query("UPDATE ipaddrs SET last_updated='{0}' WHERE id='{1}'".format(fields[2], record_id))
         else:
             print("No record id for ip address {0}".format(fields[1]))
-            execute_non_query("INSERT INTO ipaddrs (mac_id,ipaddr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, fields[1], epoch_now.strftime('%s'), epoch_now.strftime('%s')))
+            execute_non_query("INSERT INTO ipaddrs (mac_id,ipaddr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, fields[1], epoch_now.strftime('%s'), fields[2]))
         ipid = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='{0}'".format(fields[1]))
         record_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
         if record_id:
-            #print("Got record ID for host with mac_id (" + str(mac_id) + ") and ip id (" + str(ipid) + ")")
-            execute_non_query("UPDATE hosts SET last_updated='{0}' WHERE mac_id='{1}' AND ipaddr_id='{2}'".format(epoch_now.strftime('%s'), mac_id, ipid))
+            lastUpdated = execute_atomic_int_query("SELECT last_updated FROM hosts WHERE mac_id='{0}' and ipaddr_id='{1}'".format(mac_id, ipid))
+            if lastUpdated < fields[2]:
+                execute_non_query("UPDATE hosts SET last_updated='{0}' WHERE mac_id='{1}' AND ipaddr_id='{2}'".format(fields[2], mac_id, ipid))
         else:
             print("No record id for host with mac id ({0}) and ip id ({1})".format(mac_id, ipid))
-            execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{2}')".format(mac_id, ipid, epoch_now.strftime('%s')))
+            execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, ipid, epoch_now.strftime('%s'), fields[2]))
         host_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
         if args.agents_file:
             record_id = execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='{0}' AND mac_id='{1}'".format(agent_id, mac_id))
@@ -169,7 +183,7 @@ def main():
                             print dir(a.rrset)
                             print a.rrset.name
                             #exit(1)
-                            execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a.rrset.name, epoch_now.strftime('%s'))
+                            execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a.rrset.name, epoch_now.strftime('%s')))
                         else:
                             execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('{0}','{1}','{1}')".format(agnt, epoch_now.strftime('%s')))
                     else:                                                   # assume it looks like an FQDN
