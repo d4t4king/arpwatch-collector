@@ -101,7 +101,7 @@ def process_dat(data_blob, agent_id=0):
             # no record found, so create a new one
             print("No record id for mac {0}.".format(fields[0]))
             # date_discovered = now, last_updated = file date
-            execute_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('{0}','{1}','{3}')".format(fields[0], epoch_now.strftime('%s'), fields[2]))
+            execute_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}')".format(fields[0], epoch_now.strftime('%s'), fields[2]))
         # reacquire the mac id and
         mac_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
         # check for a record for the IP address
@@ -126,6 +126,12 @@ def process_dat(data_blob, agent_id=0):
         host_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
         if args.agents_file:
             record_id = execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='{0}' AND mac_id='{1}'".format(agent_id, mac_id))
+            # There are not date stamps in the agents_Macs table.  It just links macs to agents.
+            # so if we GET a record here, we don't need to do anything.
+            if not record_id:
+                # otherwise, we need to link the new mac to the agent
+                execute_non_query("INSERT INTO agents_macs (agent_id, mac_id) VALUES ('{0}', '{1}')".format(agent_id, mac_id))
+            
 
 def main():
     create_tables_sql = {
