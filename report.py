@@ -48,37 +48,54 @@ def execute_multi_row_query(sql):
 	return results
 
 def get_oldest(what):
+    oldest_d = {}
+    old_obj = {}
+    oldest_i = 0
+    oldest_date = 0
     if what == 'agent':
         agents = execute_multi_row_query('SELECT DISTINCT id FROM agents')
-        oldest_d = {}
-        oldest_i = 0
-        oldest_date = 0
         for agnt in agents:
             #pp.pprint(agnt)            # returns a list of tuples (1,)
             dateint = execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='{0}'".format(agnt[0]))
             if oldest_date == 0 or oldest_date > dateint:
                 oldest_date = dateint
                 oldest_i = agnt[0]
+        old_obj = execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='{0}'".format(oldest_i))
+    elif what == 'client':
+        clients = execute_multi_row_query('SELECT DISTINCT id FROM hosts')
+        for c in clients:
+            dateint = execute_atomic_int_query("SELECT date_discovered FROM hosts WHERE id='{0}'".format(c[0]))
+            if oldest_date == 0 or oldest_date > dateint:
+                oldest_date = dateint
+                oldest_i = c[0]
+        old_obj = execute_single_row_query("SELECT h.id,m.mac_addr,ip.ipaddr FROM hosts h INNER JOIN macs m ON h.mac_id=m.id INNER JOIN ipaddrs ip ON h.ipaddr_id=ip.id WHERE h.id='{0}'".format(oldest_i))
     else:
         raise Exception("Unrecognized entity ({0})".format(what))
-    old_obj = execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='{0}'".format(oldest_i))
     oldest_d[oldest_date] = old_obj
     return oldest_d
 
 def get_newest(what):
+    newest_d = {}
+    newest_i = 0
+    newest_date = 0
     if what == 'agent':
         agents = execute_multi_row_query('SELECT DISTINCT id FROM agents')
-        newest_d = {}
-        newest_i = 0
-        newest_date = 0
         for agnt in agents:
             dateint = execute_atomic_int_query("SELECT first_pull_date FROM agents WHERE id='{0}'".format(agnt[0]))
             if newest_date == 0 or newest_date < dateint:
                 newest_date = dateint
                 newest_i = agnt[0]
+        new_obj = execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='{0}'".format(newest_i))
+    elif what == 'client':
+        clients = execute_multi_row_query("SELECT DISTINCT id FROM hosts")
+        for c in clients:
+            dateint = execute_atomic_int_query("SELECT date_discovered FROM hosts WHERE id='{0}'".format(c[0]))
+            if newest_date == 0 or newest_date < dateint:
+                newest_date = dateint
+                newest_i = c[0]
+        new_obj = execute_single_row_query("SELECT h.id,m.mac_addr,ip.ipaddr FROM hosts h INNER JOIN macs m ON h.mac_id=m.id INNER JOIN ipaddrs ip ON h.ipaddr_id=ip.id WHERE h.id='{0}'".format(newest_i))
     else:
         raise Exception("Unrecognized entity ({0})".format(what))
-    new_obj = execute_single_row_query("SELECT id,ipaddr,fqdn FROM agents WHERE id='{0}'".format(newest_i))
     newest_d[newest_i] = new_obj
     return newest_d
 
@@ -131,6 +148,16 @@ def main():
         print "| Total unique MAC Addresses: %-41s|" % (total_macs)
         print '------------------------------------------------------------------------'
         print "| Total unique IP addresses: %-42s|" % (total_ips) 
+        print "========================================================================"
+        oldest = get_oldest('client')
+        dateint = oldest.keys()[0]
+        print "| %-10s %17s %-10s %-29s|" % ("MAC Addr:", oldest[dateint][1], "IP Addr:", oldest[dateint][2])
+        print "| %-17s %-50s |" % ("Date Discovered: ", time.strftime('%m/%d/%Y %H:%M:%S', time.localtime(dateint)))
+        print '------------------------------------------------------------------------'
+        newest = get_newest('client')
+        dateint = newest.keys()[0]
+        print "| %-10s %17s %-10s %-29s|" % ("MAC Addr:", newest[dateint][1], "IP Addr:", newest[dateint][2])
+        print "| %-17s %-50s |" % ("Date Discovered: ", time.strftime('%m/%d/%y %H:%M:%S', time.localtime(dateint)))
         print "========================================================================"
     else:
         raise Exception("Unrecognized report type! ({0})".format(args.report_type))
