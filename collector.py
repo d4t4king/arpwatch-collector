@@ -13,7 +13,6 @@ import dns.resolver
 
 pp = pprint.PrettyPrinter(indent=4)
 
-epoch_now = datetime.datetime.now()
 
 args_parse = argparse.ArgumentParser(description="Get those ARPs!")
 args_parse.add_argument('-d', '--dbfile', dest='dbfile', default='/var/lib/arpwatch/collection.db', help="The database file to store the collected data in.")
@@ -101,6 +100,7 @@ def process_dat(data_blob, agent_id=0):
             # no record found, so create a new one
             print("No record id for mac {0}.".format(fields[0]))
             # date_discovered = now, last_updated = file date
+            epoch_now = datetime.datetime.now()
             execute_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}')".format(fields[0], epoch_now.strftime('%s'), fields[2]))
         # reacquire the mac id and
         mac_id = execute_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
@@ -113,6 +113,7 @@ def process_dat(data_blob, agent_id=0):
                 execute_non_query("UPDATE ipaddrs SET last_updated='{0}' WHERE id='{1}'".format(fields[2], record_id))
         else:
             print("No record id for ip address {0}".format(fields[1]))
+            epoch_now = datetime.datetime.now()
             execute_non_query("INSERT INTO ipaddrs (mac_id,ipaddr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, fields[1], epoch_now.strftime('%s'), fields[2]))
         ipid = execute_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='{0}'".format(fields[1]))
         record_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
@@ -121,7 +122,8 @@ def process_dat(data_blob, agent_id=0):
             if lastUpdated < fields[2]:
                 execute_non_query("UPDATE hosts SET last_updated='{0}' WHERE mac_id='{1}' AND ipaddr_id='{2}'".format(fields[2], mac_id, ipid))
         else:
-            print("No record id for host with mac id ({0}) and ip id ({1})".format(mac_id, ipid))
+            print("No record id for host with mac id ({0}) and ip id ({1})".format(mac_id, ipid))	
+            epoch_now = datetime.datetime.now()
             execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, ipid, epoch_now.strftime('%s'), fields[2]))
         host_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
         if args.agents_file:
@@ -140,6 +142,30 @@ def isValidIP(ip):
 		return True
 	else:
 		return False
+
+def parseNslookup(ipName):
+    rname = ''
+    result = subprocess.check_output(['nslookup', ipName])
+    #for line in result.splitlines():
+    match = re.search(r'name\s+=\s+(.+)', result)
+    if match:
+        rname = match.group(1).strip()
+    else:
+        raise Exception("Unable to resolve ip/name: {0}".format(ipName))
+    return rname
+
+def reallyResolve(ipName):
+    rname = ''
+    if isValidIP(ipName):
+        # got an ip address, so resolve the PTR
+        try:
+            rname = dns.resolver.query(ipName, 'PTR')
+        except dns.resolver.NXDOMAIN, err:
+			rname = parseNslookup(ipName)
+    else:
+        #assume it's a host/domain name
+        rname = dns.resolver.query(ipName, 'A')
+    return rname
 
 def main():
     create_tables_sql = {
@@ -182,35 +208,27 @@ def main():
                 if agent_id:
                     print("Got agent ID: {0}.".format(agent_id))
                     ### update the last_updated date/time
+                    epoch_now = datetime.datetime.now()
                     execute_non_query("UPDATE agents SET last_update='{0}' WHERE id='{1}'".format(epoch_now.strftime('%s'), agent_id))
                 else:
                     ### try to get the name/IP
                     ### create the agent record
-                    if re.search(r'^(\d+\.){3}(\d+)$', agnt):               # looks like IP address
-                        a = ''
-                        try:
-                            a = dns.resolver.query(agnt, 'A')
-                        except dns.resolver.NXDOMAIN, nx:
-                            a = 'UNRESOLVED'
-                        if a and not 'UNRESOLVED' in a:
-                            pp.pprint(a.rrset)
-                            print dir(a.rrset)
-                            print a.rrset.name
-                            #exit(1)
-                            execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a.rrset.name, epoch_now.strftime('%s')))
-                        else:
-                            execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('{0}','{1}','{1}')".format(agnt, epoch_now.strftime('%s')))
-                    else:                                                   # assume it looks like an FQDN
-                        ptr = ''
-                        try:
-                            ptr = dns.resolver.query(agnt, 'PTR')
-                        except dns.resolver.NoAnswer, err:
-                            ptr = 'NOPTR'
-                        if ptr and not ptr == 'NOPTR':
-                            execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(ptr, agnt, epoch_now.strftime('%s')))
-                        else:
-                            execute_non_query("INSERT INTO agents (fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{1}')".format(agnt, epoch_now.strftime('%s')))
-                    agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='{0}' OR fqdn='{0}'".format(agnt))
+                    a = reallyResolve(agnt)
+                    #pp.pprint(a)
+                    #print dir(a)
+                    #print a
+                    #exit(1)
+                    if a and not 'UNRESOLVED' in a:
+                        epoch_now = datetime.datetime.now()
+                        execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a, epoch_now.strftime('%s')))
+                    elif a and 'UNRESOLVED' in a:
+                        print("WARNING: Couldn't resolve agent: ({0})".format(agnt))
+                        epoch_now = datetime.datetime.now()
+                        execute_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a, epoch_now.strftime('%s')))
+                    else:
+                        epoch_now = datetime.datetime.now()
+                        execute_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('{0}','{1}','{1}')".format(agnt, epoch_now.strftime('%s')))
+                agent_id = execute_atomic_int_query("SELECT id FROM agents WHERE ipaddr='{0}' OR fqdn='{0}'".format(agnt))
                 files = get_files(agnt)
                 if files and 'list' in str(type(files)):
                     for f in files:
