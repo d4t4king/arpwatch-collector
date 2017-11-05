@@ -124,7 +124,11 @@ def process_dat(data_blob, agent_id=0):
         else:
             print("No record id for host with mac id ({0}) and ip id ({1})".format(mac_id, ipid))	
             epoch_now = datetime.datetime.now()
-            execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, ipid, epoch_now.strftime('%s'), fields[2]))
+            if not 'None' in fields[3]:
+                name = fields[3]
+            else:
+                name = reallyResolve(fields[1])
+            execute_non_query("INSERT INTO hosts (mac_id,ipaddr_id,name,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}','{4}')".format(mac_id, ipid, name, epoch_now.strftime('%s'), fields[2]))
         host_id = execute_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
         if args.agents_file:
             record_id = execute_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='{0}' AND mac_id='{1}'".format(agent_id, mac_id))
@@ -172,7 +176,7 @@ def main():
         'macs': 'CREATE TABLE IF NOT EXISTS macs (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, mac_addr TEXT, date_discovered INTEGER, last_updated INTEGER)',
         'ipaddrs': 'CREATE TABLE IF NOT EXISTS ipaddrs (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, mac_id INTEGER, ipaddr TEXT, date_discovered INTEGER, last_updated INTEGER)',
         'agents': 'CREATE TABLE IF NOT EXISTS agents (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, ipaddr TEXT, fqdn TEXT, first_pull_date INTEGER, last_update INTEGER, iface TEXT)',
-        'hosts': 'CREATE TABLE IF NOT EXISTS hosts (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, mac_id INTEGER, ipaddr_id INTEGER, date_discovered INTEGER, last_updated INTEGER)',
+        'hosts': 'CREATE TABLE IF NOT EXISTS hosts (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, mac_id INTEGER, ipaddr_id INTEGER, name TEXT, date_discovered INTEGER, last_updated INTEGER)',
         'agents_macs': 'CREATE TABLE IF NOT EXISTS agents_macs (id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, agent_id INTEGER, mac_id INTEGER)'
     }
     # create the tables in the sqlite3 database
