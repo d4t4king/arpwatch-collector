@@ -96,7 +96,7 @@ def get_newest(what):
         new_obj = execute_single_row_query("SELECT h.id,m.mac_addr,ip.ipaddr FROM hosts h INNER JOIN macs m ON h.mac_id=m.id INNER JOIN ipaddrs ip ON h.ipaddr_id=ip.id WHERE h.id='{0}'".format(newest_i))
     else:
         raise Exception("Unrecognized entity ({0})".format(what))
-    newest_d[newest_i] = new_obj
+    newest_d[newest_date] = new_obj
     return newest_d
 
 def main():
