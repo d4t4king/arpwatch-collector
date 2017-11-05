@@ -132,6 +132,14 @@ def process_dat(data_blob, agent_id=0):
                 # otherwise, we need to link the new mac to the agent
                 execute_non_query("INSERT INTO agents_macs (agent_id, mac_id) VALUES ('{0}', '{1}')".format(agent_id, mac_id))
             
+def isValidIP(ip):
+	# This is a pretty specific regular expression, so if it doesn't match,
+	# it's probably not an IP address....or at least not a valid one.
+	match = re.search(r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b', ip)
+	if match:
+		return True
+	else:
+		return False
 
 def main():
     create_tables_sql = {
