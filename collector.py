@@ -2,6 +2,7 @@
 
 import re
 import pprint
+import socket
 import os.path
 import sqlite3
 import argparse
@@ -9,6 +10,7 @@ import datetime
 import subprocess
 import dns.resolver
 ### custom py libs
+import arpwatch
 import sqliteUtils
 
 args_parse = argparse.ArgumentParser(description="Get those ARPs!")
@@ -18,158 +20,6 @@ args = args_parse.parse_args()
 
 pp = pprint.PrettyPrinter(indent=4)
 sqlitedb = sqliteUtils.sqliteUtils(args.dbfile)
-
-def execute_atomic_int_query(sql):
-    conn = sqlite3.connect(args.dbfile)
-    with conn:
-        cur = conn.cursor()
-        try:
-            cur.execute(sql)
-        except ValueError, err:
-            return -1
-        conn.commit()
-        result = cur.fetchone()
-        my_int = 0
-        if 'tuple' in str(type(result)):
-            my_int = result[0]
-        elif 'int' in str(type(result)):
-            my_int = result
-        elif 'NoneType' in str(type(result)):
-            my_int = False
-        else:
-            raise TypeError("Unexpected SQL query result type: {0}.".format(type(result)))
-        return my_int
-
-def execute_non_query(sql):
-    conn = sqlite3.connect(args.dbfile)
-    with conn:
-        cur = conn.cursor()
-        cur.execute(sql)
-        conn.commit()
-
-def getData():
-    f = open("/var/lib/arpwatch/arp.dat", 'r')
-    blob = f.read()
-    f.close()
-    return blob
-
-def getFiles(host):
-    files = []
-    try:
-        output = subprocess.check_output(['/usr/bin/ssh', host, 'ls /var/lib/arpwatch/'], stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError, err:
-        if err.returncode == 255:
-            # likely ssh timed out becuse system offline or otherwise unavailable
-            return err.returncode
-        else:
-            raise err
-        
-    for f in output.splitlines():
-        # skip files ending in .new or -.  These are likely cache files and we don't want to process them
-        if re.search(r'(\.new|\-)$', f):
-            continue
-        # skip the ethercodes.dat files.  These are vendor translations for mac addresses.
-        # we may want to include this in the future, but it will probably be easier to
-        # just get the data from IEEE
-        if re.search(r'ethercodes\.(dat|db)', f):
-            continue
-        # skip the default collection database file
-        if re.search(r'collection\.db', f):
-            continue
-        files.append(f)
-    return files
-
-def processDat(data_blob, agent_id=0):
-    sql = ''
-    for line in data_blob.splitlines():
-        # mac_add, ip_addr, epoch, name, iface
-        fields = line.split('\t')
-        pp.pprint(fields)
-        # check if the record for the mac address is already in the database
-        record_id = sqlitedb.exec_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
-        if record_id:
-            # we found an id for that mac, so now check if the date matches that in the file
-            lastUpdated = sqlitedb.exec_atomic_int_query("SELECT last_updated FROM macs WHERE id='{0}'".format(record_id))
-            if lastUpdated < fields[2]:
-                # update the db date with that from the file
-                sqlitedb.exec_non_query("UPDATE macs SET last_updated='{0}' WHERE id='{1}'".format(fields[2], record_id))
-            # otherwise don't do anything:
-            # if the db date is greater than the file date, do nothing
-            # if the db date is the same as the file date do nothing
-        else:
-            # no record found, so create a new one
-            print("No record id for mac {0}.".format(fields[0]))
-            # date_discovered = now, last_updated = file date
-            epoch_now = datetime.datetime.now()
-            sqlitedb.exec_non_query("INSERT INTO macs (mac_addr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}')".format(fields[0], epoch_now.strftime('%s'), fields[2]))
-        # reacquire the mac id and
-        mac_id = sqlitedb.exec_atomic_int_query("SELECT id FROM macs WHERE mac_addr='{0}'".format(fields[0]))
-        # check for a record for the IP address
-        record_id = sqlitedb.exec_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='{0}'".format(fields[1]))
-        # if we find a record, update the last update date from the file
-        if record_id:
-            lastUpdated = sqlitedb.exec_atomic_int_query("SELECT last_updated FROM ipaddrs WHERE id='{0}'".format(record_id))
-            if lastUpdated < fields[2]:
-                sqlitedb.exec_non_query("UPDATE ipaddrs SET last_updated='{0}' WHERE id='{1}'".format(fields[2], record_id))
-        else:
-            print("No record id for ip address {0}".format(fields[1]))
-            epoch_now = datetime.datetime.now()
-            sqlitedb.exec_non_query("INSERT INTO ipaddrs (mac_id,ipaddr,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}')".format(mac_id, fields[1], epoch_now.strftime('%s'), fields[2]))
-        ipid = sqlitedb.exec_atomic_int_query("SELECT id FROM ipaddrs WHERE ipaddr='{0}'".format(fields[1]))
-        record_id = sqlitedb.exec_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
-        if record_id:
-            lastUpdated = sqlitedb.exec_atomic_int_query("SELECT last_updated FROM hosts WHERE mac_id='{0}' and ipaddr_id='{1}'".format(mac_id, ipid))
-            if lastUpdated < fields[2]:
-                sqlitedb.exec_non_query("UPDATE hosts SET last_updated='{0}' WHERE mac_id='{1}' AND ipaddr_id='{2}'".format(fields[2], mac_id, ipid))
-        else:
-            print("No record id for host with mac id ({0}) and ip id ({1})".format(mac_id, ipid))	
-            epoch_now = datetime.datetime.now()
-            if not 'None' in fields[3]:
-                name = fields[3]
-            else:
-                name = reallyResolve(fields[1])
-            sqlitedb.exec_non_query("INSERT INTO hosts (mac_id,ipaddr_id,name,date_discovered,last_updated) VALUES ('{0}','{1}','{2}','{3}','{4}')".format(mac_id, ipid, name, epoch_now.strftime('%s'), fields[2]))
-        host_id = sqlitedb.exec_atomic_int_query("SELECT id FROM hosts WHERE mac_id='{0}' AND ipaddr_id='{1}'".format(mac_id, ipid))
-        if args.agents_file:
-            record_id = sqlitedb.exec_atomic_int_query("SELECT id FROM agents_macs WHERE agent_id='{0}' AND mac_id='{1}'".format(agent_id, mac_id))
-            # There are not date stamps in the agents_Macs table.  It just links macs to agents.
-            # so if we GET a record here, we don't need to do anything.
-            if not record_id:
-                # otherwise, we need to link the new mac to the agent
-                sqlitedb.exec_non_query("INSERT INTO agents_macs (agent_id, mac_id) VALUES ('{0}', '{1}')".format(agent_id, mac_id))
-            
-def isValidIP(ip):
-	# This is a pretty specific regular expression, so if it doesn't match,
-	# it's probably not an IP address....or at least not a valid one.
-	match = re.search(r'\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b', ip)
-	if match:
-		return True
-	else:
-		return False
-
-def parseNslookup(ipName):
-    rname = ''
-    result = subprocess.check_output(['nslookup', ipName])
-    #for line in result.splitlines():
-    match = re.search(r'name\s+=\s+(.+)', result)
-    if match:
-        rname = match.group(1).strip()
-    else:
-        raise Exception("Unable to resolve ip/name: {0}".format(ipName))
-    return rname
-
-def reallyResolve(ipName):
-    rname = ''
-    if isValidIP(ipName):
-        # got an ip address, so resolve the PTR
-        try:
-            rname = dns.resolver.query(ipName, 'PTR')
-        except dns.resolver.NXDOMAIN, err:
-			rname = parseNslookup(ipName)
-    else:
-        #assume it's a host/domain name
-        rname = dns.resolver.query(ipName, 'A')
-    return rname
 
 def main():
     create_tables_sql = {
@@ -207,48 +57,36 @@ def main():
                     continue
                 agnt = line.strip()
                 print("Agent: " + agnt)
-                ### get agent id from database
-                agent_id = sqlitedb.exec_atomic_int_query("SELECT id FROM agents WHERE ipaddr='{0}' OR fqdn='{0}'".format(agnt))
-                ### if it exists
-                if agent_id:
-                    print("Got agent ID: {0}.".format(agent_id))
-                    ### update the last_updated date/time
-                    epoch_now = datetime.datetime.now()
-                    sqlitedb.exec_non_query("UPDATE agents SET last_update='{0}' WHERE id='{1}'".format(epoch_now.strftime('%s'), agent_id))
-                else:
-                    ### try to get the name/IP
-                    ### create the agent record
-                    a = reallyResolve(agnt)
-                    #pp.pprint(a)
-                    #print dir(a)
-                    #print a
-                    #exit(1)
-                    if a and not 'UNRESOLVED' in a:
-                        epoch_now = datetime.datetime.now()
-                        sqlitedb.exec_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a, epoch_now.strftime('%s')))
-                    elif a and 'UNRESOLVED' in a:
-                        print("WARNING: Couldn't resolve agent: ({0})".format(agnt))
-                        epoch_now = datetime.datetime.now()
-                        sqlitedb.exec_non_query("INSERT INTO agents (ipaddr,fqdn,first_pull_date,last_update) VALUES ('{0}','{1}','{2}','{2}')".format(agnt, a, epoch_now.strftime('%s')))
-                    else:
-                        epoch_now = datetime.datetime.now()
-                        sqlitedb.exec_non_query("INSERT INTO agents (ipaddr,first_pull_date,last_update) VALUES ('{0}','{1}','{1}')".format(agnt, epoch_now.strftime('%s')))
-                agent_id = sqlitedb.exec_atomic_int_query("SELECT id FROM agents WHERE ipaddr='{0}' OR fqdn='{0}'".format(agnt))
-                files = getFiles(agnt)
+                agent = arpwatch.Agent(agnt)
+                #agent.set_agentid(args.dbfile)
+                agent.save(args.dbfile)
+                files = agent.getFiles()
+                pp.pprint(files)
                 if files and 'list' in str(type(files)):
                     for f in files:
                         print("Processing file: {0} from agent {1}".format(f, agnt))
                         blob = subprocess.check_output(['/usr/bin/ssh', agnt, 'cat /var/lib/arpwatch/' + f])
                         if blob:
-                            processDat(blob, agent_id)
+                            agent.processDat(blob, args.dbfile)
                         else:
                             print("Got no data from {0}:/var/lib/arpwatch/{1}".format(agnt, f))
                 else:
-                    print("There was a poroblem getting the files from agent ({0})!".format(agnt))
+                    print("There was a problem getting the files from agent ({0})!".format(agnt))
     else:
-        blob = getData()
-        processDat(blob)
-
+        ipaddr = socket.gethostbyname(socket.gethostname())
+        agent = arpwatch.Agent(ipaddr)
+        agent.save(args.dbfile)
+        files = agent.getFiles()
+        if files and 'list' in str(type(files)):
+            for f in files:
+                print("Processinf file {0} from agent {1}".format(f, agent.fqdn))
+                blob = subprocess.check_output(['/bin/cat', "/var/lib/arpwatch/{0}".format(f)])
+                if blob:
+	                agent.processDat(blob, args.dbfile)
+                else:
+                    print("Got no data from {0}:/var/lib/arpwatch/{1}".format(agent.fqdn, f))
+        else:
+            print("There was a problem getting the files from agent ({0})!".format(agent.fqdn))
 
 if __name__ == "__main__":
     main()
