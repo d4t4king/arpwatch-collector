@@ -55,6 +55,15 @@ class ArpwatchUtils(object):
         else:
             # assume it's a host/domain name
             rname = query(ipName, 'A')
+        print("rname is type {0}.".format(type(rname)))
+        if 'dns.resolver.Answer' in str(type(rname)):
+            if len(rname) == 1:
+                rname = rname.rrset.name
+            else:
+                print("Got {0} elements in rname!".format(len(rname)))
+                for r in rname:
+                    print r
+                exit(1)
         return rname
 
     ################################
@@ -198,7 +207,7 @@ class Agent(object):
             # skip the ethercodes.dat files.  These are vendor translations for mac addresses.
             # we may want to include this in the future, but it will probably be easier to
             # just get the data from IEEE
-            if re.search(r'ethercodes\.(date|db)', f):
+            if re.search(r'ethercodes\.(dat|db)', f):
                 continue
             # skip the default collection database file
             if re.search(r'collection\.db', f):
@@ -214,14 +223,24 @@ class Agent(object):
         for line in dataBlob.splitlines():
             # mac_addr, ip_addr, record_date, name, iface
             fields = line.split('\t')
-            #pp.pprint(fields)
+            pp.pprint(fields)
+            # This shouldn't be needed, but will leave it in for now.
             if fields[0] == '0.0.0' and not fields[2]:
                 # skip likely invalid MAC addresses with no record date
-                continue
+                pass
             if not self.agentid:
                 raise Exception("No agent id for client!")
             print("Agent ID: {0}".format(self.agentid))
-            client = Client(fields[0], fields[1], fields[2], fields[3], fields[4], self.agentid)
+            #print("Got {0} fields from row.".format(len(fields)))
+            client = ''
+            if len(fields) == 5:
+                client = Client(fields[0], fields[1], fields[2], fields[3], fields[4], self.agentid)
+            elif len(fields) == 4:
+                client = Client(fields[0], fields[1], fields[2], fields[3], '', self.agentid)
+            elif len(fields) == 3:
+                client = Client(fields[0], fields[1], fields[2], '', '', self.agentid)
+            else:
+                raise Exception("Got unexpected number of fields from file! ({0})".format(len(fields)))
             client.save(dbfile)
             
 
