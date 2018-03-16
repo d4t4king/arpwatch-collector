@@ -11,10 +11,12 @@ import sqliteUtils
 pp = pprint.PrettyPrinter(indent=4)
 
 args_parse = argparse.ArgumentParser(description="Get those ARPs!")
-args_parse.add_argument('-d', '--dbfile', dest='dbfile', default='/var/lib/arpwatch/collection.db', \
-	help='The database file to read the collected data from.')
-args_parse.add_argument('-r', '--report', dest='report_type', required=True, \
-	help='The type of report to run.  Available options are: agent-summary.')
+args_parse.add_argument('-d', '--dbfile', dest='dbfile', \
+    default='/var/lib/arpwatch/collection.db', \
+    help='The database file to read the collected data from.')
+args_parse.add_argument('-r', '--report', dest='report_type', \
+    required=True, help='The type of report to run.  \
+        Available options are: agent-summary, client-summary, client-detail.')
 args = args_parse.parse_args()
 
 def get_oldest(what):
